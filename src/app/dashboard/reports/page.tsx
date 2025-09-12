@@ -32,6 +32,8 @@ type ChartData = {
   expenses: number;
 };
 
+export const dynamic = 'force-dynamic';
+
 export default function ReportsPage() {
   const [user, loading, error] = useAuthState(auth);
   const [chartData, setChartData] = useState<ChartData[]>([]);

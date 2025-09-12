@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+export const dynamic = 'force-dynamic';
 
 export default function CollaborationPage() {
     const [user, loading, error] = useAuthState(auth);
