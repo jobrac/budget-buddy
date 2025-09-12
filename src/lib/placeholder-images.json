@@ -1,0 +1,22 @@
+{
+  "placeholderImages": [
+    {
+      "id": "hero",
+      "description": "A vibrant image showing financial planning or a piggy bank.",
+      "imageUrl": "https://picsum.photos/seed/hero/1200/800",
+      "imageHint": "finance planning"
+    },
+    {
+      "id": "collaboration",
+      "description": "An image of people collaborating around a desk or screen.",
+      "imageUrl": "https://picsum.photos/seed/collab/800/600",
+      "imageHint": "team collaboration"
+    },
+    {
+      "id": "cta",
+      "description": "An abstract background for the CTA section.",
+      "imageUrl": "https://picsum.photos/seed/cta/1600/500",
+      "imageHint": "abstract pattern"
+    }
+  ]
+}
