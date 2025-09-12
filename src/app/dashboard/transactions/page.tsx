@@ -19,9 +19,13 @@ export default function TransactionsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (userLoading) return;
+    if (userLoading) {
+      setLoading(true);
+      return;
+    }
     if (!user) {
       setLoading(false);
+      // Not an error, just no user logged in
       return;
     }
     
