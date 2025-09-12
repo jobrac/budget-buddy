@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase/client";
-import { doc, updateDoc, getDoc, writeBatch, collection, getDocs, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc } from "firebase/firestore";
 import type { Project } from "@/lib/types";
 import { useParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,40 +37,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { deleteProject } from "./_actions/delete-project";
 
 
 const currencies = ["USD", "EUR", "GBP", "JPY", "INR", "CAD", "AUD"];
-
-// This server action will handle the deletion. It's defined here for collocation,
-// but it only runs on the server.
-async function deleteProject(projectId: string): Promise<{success: boolean, error?: string}> {
-    'use server';
-    try {
-        const projectRef = doc(db, "projects", projectId);
-        const batch = writeBatch(db);
-
-        // Subcollections to delete
-        const subcollections = ["transactions", "accounts", "categories", "recurringTransactions"];
-
-        for (const sub of subcollections) {
-            const subcollectionRef = collection(db, "projects", projectId, sub);
-            const snapshot = await getDocs(subcollectionRef);
-            snapshot.docs.forEach(doc => {
-                batch.delete(doc.ref);
-            });
-        }
-        
-        // Delete the main project document
-        batch.delete(projectRef);
-
-        await batch.commit();
-        
-        return { success: true };
-    } catch (error) {
-        console.error("Error deleting project:", error);
-        return { success: false, error: (error as Error).message || "Failed to delete project." };
-    }
-}
 
 
 export default function ProjectSettingsPage() {
