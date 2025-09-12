@@ -3,5 +3,10 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "apphosting": {
+    "backends": [
+      "budget-buddy-backend"
+    ]
   }
 }

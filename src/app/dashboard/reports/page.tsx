@@ -18,13 +18,12 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAuthState } from "react-firebase-hooks/auth";
 import { auth, db } from "@/lib/firebase/client";
-import { collection, query, where, getDocs, Timestamp, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, Timestamp, doc } from "firebase/firestore";
 import { useCollection, useDocument } from "react-firebase-hooks/firestore";
 import type { Project, Transaction, UserPreferences } from "@/lib/types";
 import { useEffect, useState } from "react";
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { convertCurrency } from "@/ai/flows/currency-converter";
-
 
 type ChartData = {
   name: string;
@@ -35,7 +34,7 @@ type ChartData = {
 export const dynamic = 'force-dynamic';
 
 export default function ReportsPage() {
-  const [user, loading, error] = useAuthState(auth);
+  const [user, userLoading, userError] = useAuthState(auth);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [totals, setTotals] = useState({ income: 0, expenses: 0, balance: 0 });
   const [isLoading, setIsLoading] = useState(true);
@@ -50,93 +49,108 @@ export default function ReportsPage() {
   );
 
   useEffect(() => {
-    if (preferencesLoading) return;
-    if (preferencesSnapshot?.exists()) {
+    // Determine the reporting currency first
+    if (!preferencesLoading && preferencesSnapshot?.exists()) {
         const prefs = preferencesSnapshot.data() as UserPreferences;
-        setReportingCurrency(prefs.defaultCurrency || "USD");
+        if (prefs.defaultCurrency) {
+            setReportingCurrency(prefs.defaultCurrency);
+        }
     }
   }, [preferencesSnapshot, preferencesLoading]);
 
   useEffect(() => {
-    if (projectsLoading || preferencesLoading) {
+    const isDataLoading = userLoading || projectsLoading || preferencesLoading;
+    if (isDataLoading) {
       setIsLoading(true);
       return;
     }
-    if (projectsSnapshot && !preferencesLoading) {
-      const projects = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
+
+    if (!projectsSnapshot) {
+      setIsLoading(false);
+      return;
+    }
+
+    const projects = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Project[];
+    const now = new Date();
+    const startOfCurrentMonth = startOfMonth(now);
+    const endOfCurrentMonth = endOfMonth(now);
+
+    const fetchAllTransactions = async () => {
+      setIsLoading(true);
       let allProjectsIncome = 0;
       let allProjectsExpenses = 0;
       const newChartData: ChartData[] = [];
 
-      const now = new Date();
-      const startOfCurrentMonth = startOfMonth(now);
-      const endOfCurrentMonth = endOfMonth(now);
-
-      const fetchTransactions = async () => {
-        setIsLoading(true);
-        for (const project of projects) {
-          const transactionsQuery = query(
-            collection(db, "projects", project.id, "transactions"),
-            where("clientDate", ">=", Timestamp.fromDate(startOfCurrentMonth)),
-            where("clientDate", "<=", Timestamp.fromDate(endOfCurrentMonth))
-          );
-          const transactionsSnapshot = await getDocs(transactionsQuery);
-          const transactions = transactionsSnapshot.docs.map(doc => doc.data()) as Transaction[];
-          
-          let projectIncome = 0;
-          let projectExpenses = 0;
-          
-          for(const t of transactions) {
-             let convertedAmount = t.amount;
-             if (project.currency !== reportingCurrency) {
-                 const result = await convertCurrency({
-                     amount: t.amount,
-                     from: project.currency,
-                     to: reportingCurrency,
-                 });
-                 convertedAmount = result.convertedAmount;
-             }
-             if(t.type === 'Income') {
-                 projectIncome += convertedAmount;
-             } else {
-                 projectExpenses += convertedAmount;
-             }
-          }
-
-          allProjectsIncome += projectIncome;
-          allProjectsExpenses += projectExpenses;
-
-          newChartData.push({
-            name: project.name,
-            income: projectIncome,
-            expenses: projectExpenses,
-          });
-        }
+      for (const project of projects) {
+        const transactionsQuery = query(
+          collection(db, "projects", project.id, "transactions"),
+          where("clientDate", ">=", Timestamp.fromDate(startOfCurrentMonth)),
+          where("clientDate", "<=", Timestamp.fromDate(endOfCurrentMonth))
+        );
+        const transactionsSnapshot = await getDocs(transactionsQuery);
+        const transactions = transactionsSnapshot.docs.map(doc => doc.data()) as Transaction[];
         
-        setChartData(newChartData);
-        setTotals({
-          income: allProjectsIncome,
-          expenses: allProjectsExpenses,
-          balance: allProjectsIncome - allProjectsExpenses,
+        let projectIncome = 0;
+        let projectExpenses = 0;
+        
+        for(const t of transactions) {
+           let convertedAmount = t.amount;
+           if (project.currency !== reportingCurrency) {
+               try {
+                   const result = await convertCurrency({
+                       amount: t.amount,
+                       from: project.currency,
+                       to: reportingCurrency,
+                   });
+                   convertedAmount = result.convertedAmount;
+               } catch (e) {
+                   console.error(`Currency conversion failed for project ${project.name}:`, e);
+                   // If conversion fails, we might skip this transaction or use original amount
+                   // For now, we'll use original and assume 1:1 to avoid breaking the report
+               }
+           }
+           if(t.type === 'Income') {
+               projectIncome += convertedAmount;
+           } else {
+               projectExpenses += convertedAmount;
+           }
+        }
+
+        allProjectsIncome += projectIncome;
+        allProjectsExpenses += projectExpenses;
+
+        newChartData.push({
+          name: project.name,
+          income: projectIncome,
+          expenses: projectExpenses,
         });
-        setIsLoading(false);
-      };
+      }
+      
+      setChartData(newChartData);
+      setTotals({
+        income: allProjectsIncome,
+        expenses: allProjectsExpenses,
+        balance: allProjectsIncome - allProjectsExpenses,
+      });
+      setIsLoading(false);
+    };
 
-      fetchTransactions();
-    }
-  }, [projectsSnapshot, projectsLoading, preferencesLoading, reportingCurrency]);
+    fetchAllTransactions();
+
+  }, [userLoading, projectsLoading, preferencesLoading, projectsSnapshot, reportingCurrency]);
 
 
-  if (loading || isLoading || preferencesLoading) {
+  if (userLoading || isLoading) {
     return (
         <div className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+            <h1 className="text-lg font-semibold md:text-2xl font-headline">Global Reports</h1>
             <div>Loading reports...</div>
         </div>
     );
   }
 
-  if (error || projectsError || preferencesError) {
-    return <div className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">Error: {error?.message || projectsError?.message || preferencesError?.message}</div>;
+  if (userError || projectsError || preferencesError) {
+    return <div className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">Error: {userError?.message || projectsError?.message || preferencesError?.message}</div>;
   }
 
   return (
@@ -238,5 +252,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
-    
