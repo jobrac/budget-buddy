@@ -1,25 +1,45 @@
+
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read/write their own preferences
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+  
+    // Helper function to check if a user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to get the user's role for a specific project
+    function getRole(projectId) {
+      return get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid];
     }
 
     match /projects/{projectId} {
-      // Allow project creation for any authenticated user
-      allow create: if request.auth != null;
+      // READ: Allow if the user's UID is in the project's roles map.
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.roles;
       
-      // Allow listing projects where the user is a member
-      allow list: if request.auth != null;
+      // CREATE: Allow if the user is authenticated and is setting themselves as the 'Owner'.
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.roles[request.auth.uid] && request.resource.data.roles[request.auth.uid] == 'Owner';
+      
+      // UPDATE: Allow if the user is an 'Owner' or 'Editor'.
+      allow update: if isAuthenticated() && (getRole(projectId) == 'Owner' || getRole(projectId) == 'Editor');
 
-      // Allow reading/updating/deleting a specific project if the user is a member
-      allow read, update, delete: if request.auth != null && resource.data.roles[request.auth.uid] in ['Owner', 'Editor', 'Viewer'];
+      // DELETE: Only allow if the user is an 'Owner'.
+      allow delete: if isAuthenticated() && getRole(projectId) == 'Owner';
       
-      // Allow access to all subcollections if user has access to the parent project
+      // Subcollections
       match /{subcollection}/{docId} {
-        allow read, write, create, delete: if request.auth != null && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor', 'Viewer'];
+        // READ: Allow if user has any role in the parent project.
+        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.roles;
+        
+        // WRITE (Create, Update): Allow if user is 'Owner' or 'Editor'.
+        allow write: if isAuthenticated() && (getRole(projectId) == 'Owner' || getRole(projectId) == 'Editor');
       }
+    }
+    
+    match /users/{userId} {
+    	// Allow users to read and write their own preferences document
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
   }
 }
