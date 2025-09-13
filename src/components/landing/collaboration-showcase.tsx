@@ -1,8 +1,8 @@
 import Image from 'next/image';
 import { Check } from 'lucide-react';
-import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { placeholderImages } from '@/lib/placeholder-images';
 
-const collabImage = PlaceHolderImages.find(img => img.id === 'collaboration');
+const collabImage = placeholderImages.find(img => img.id === 'collaboration');
 
 export default function CollaborationShowcase() {
   return (

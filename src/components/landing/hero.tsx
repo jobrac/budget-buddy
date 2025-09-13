@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { placeholderImages } from '@/lib/placeholder-images';
 
-const heroImage = PlaceHolderImages.find(img => img.id === 'hero');
+const heroImage = placeholderImages.find(img => img.id === 'hero');
 
 export default function Hero() {
   return (

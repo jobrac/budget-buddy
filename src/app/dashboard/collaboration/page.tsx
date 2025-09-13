@@ -20,6 +20,7 @@ export const dynamic = 'force-dynamic';
 export default function CollaborationPage() {
     const [user, loading, error] = useAuthState(auth);
 
+    // This is the key change: ensure the query is only created when `user` is available.
     const [projectsSnapshot, projectsLoading, projectsError] = useCollection(
         user ? query(
             collection(db, "projects"), 
@@ -27,7 +28,7 @@ export default function CollaborationPage() {
         ) : undefined
     );
 
-    if (loading || (user && projectsLoading)) {
+    if (loading) {
         return (
              <div className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
                 <h1 className="text-lg font-semibold md:text-2xl font-headline">Shared with me</h1>
@@ -38,6 +39,16 @@ export default function CollaborationPage() {
 
     if (error || projectsError) {
         return <div>Error: {error?.message || projectsError?.message}</div>
+    }
+    
+    // Also check for projects loading state after the user is loaded
+    if (user && projectsLoading) {
+         return (
+             <div className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+                <h1 className="text-lg font-semibold md:text-2xl font-headline">Shared with me</h1>
+                <div>Loading projects...</div>
+            </div>
+        )
     }
 
     const sharedProjects = projectsSnapshot?.docs.map(doc => ({ id: doc.id, ...doc.data() as Omit<Project, 'id'> })) || [];
