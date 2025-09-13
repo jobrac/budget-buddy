@@ -39,3 +39,7 @@
 
 # Patching
 /patches
+
+# Firebase
+.firebase
+firebase-debug.log
