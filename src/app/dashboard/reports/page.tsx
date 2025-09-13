@@ -21,7 +21,7 @@ import { auth, db } from "@/lib/firebase/client";
 import { collection, query, where, getDocs, Timestamp, doc } from "firebase/firestore";
 import { useCollection, useDocument } from "react-firebase-hooks/firestore";
 import type { Project, Transaction, UserPreferences } from "@/lib/types";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { convertCurrency } from "@/ai/flows/currency-converter";
 
@@ -49,12 +49,12 @@ export default function ReportsPage() {
   );
 
   useEffect(() => {
-    // Determine the reporting currency first
-    if (!preferencesLoading && preferencesSnapshot?.exists()) {
-        const prefs = preferencesSnapshot.data() as UserPreferences;
-        if (prefs.defaultCurrency) {
-            setReportingCurrency(prefs.defaultCurrency);
-        }
+    if (preferencesLoading) return;
+    if (preferencesSnapshot?.exists()) {
+      const prefs = preferencesSnapshot.data() as UserPreferences;
+      setReportingCurrency(prefs.defaultCurrency || "USD");
+    } else {
+      setReportingCurrency("USD"); // Default currency if no preferences are set
     }
   }, [preferencesSnapshot, preferencesLoading]);
 
@@ -105,8 +105,7 @@ export default function ReportsPage() {
                    convertedAmount = result.convertedAmount;
                } catch (e) {
                    console.error(`Currency conversion failed for project ${project.name}:`, e);
-                   // If conversion fails, we might skip this transaction or use original amount
-                   // For now, we'll use original and assume 1:1 to avoid breaking the report
+                   // Fallback: use original amount to avoid breaking the report.
                }
            }
            if(t.type === 'Income') {
@@ -135,9 +134,12 @@ export default function ReportsPage() {
       setIsLoading(false);
     };
 
-    fetchAllTransactions();
+    // Only run if we have a reporting currency and projects are loaded
+    if (reportingCurrency && !projectsLoading) {
+        fetchAllTransactions();
+    }
 
-  }, [userLoading, projectsLoading, preferencesLoading, projectsSnapshot, reportingCurrency]);
+  }, [userLoading, projectsLoading, projectsSnapshot, reportingCurrency, preferencesLoading]);
 
 
   if (userLoading || isLoading) {
