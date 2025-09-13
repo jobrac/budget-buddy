@@ -15,14 +15,5 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
-  },
-  "functions": {
-    "source": ".",
-    "runtime": "nodejs20",
-    "repo": {
-      "name": "budget-buddy",
-      "path": "functions",
-      "retention": "latest"
-    }
   }
 }
