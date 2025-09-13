@@ -45,7 +45,7 @@ export default function CollaborationPage() {
   }
 
   const project = { id: projectSnapshot.id, ...projectSnapshot.data() } as Project;
-  const projectType = project.name; // Using project name as a proxy for type
+  const projectType = "General"; // Using a general type as it was removed
 
   return (
     <>
