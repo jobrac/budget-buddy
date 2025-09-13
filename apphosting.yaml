@@ -5,3 +5,11 @@ runConfig:
   # Increase this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
   maxInstances: 1
+# This sets the cleanup policy for the container images that are
+# built for your app. It's best practice to set this to avoid
+# accumulating storage costs.
+# It's configured here to keep only the most recent deployment's image.
+managedBy: gcp-cloud-build-v2
+retention:
+  # Keep only the latest 1 image.
+  taggedImageCount: 1
