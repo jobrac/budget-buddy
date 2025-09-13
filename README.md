@@ -94,8 +94,8 @@ This application is configured for easy deployment to **Firebase App Hosting**.
     ```
     You will be prompted to enter the secret value for each.
 
-4.  **Deploy the Backend**
+4.  **Deploy the Application**
     ```bash
-    firebase apphosting:backends:deploy
+    firebase deploy
     ```
 The CLI will build the application and deploy it, providing you with a live URL upon completion.
