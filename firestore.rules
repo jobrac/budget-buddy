@@ -2,47 +2,42 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // Helper functions
-    function isSignedIn() {
+    function isAuth() {
       return request.auth != null;
     }
-    
+
+    function isProjectOwner(projectId) {
+      return get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
+    }
+
     function isProjectMember(projectId) {
-      return get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor', 'Viewer'];
+      return request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.roles;
     }
     
     function isProjectEditor(projectId) {
-       return get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor'];
-    }
-    
-    function isProjectOwner(projectId) {
-       return get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
+      let userRole = get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid];
+      return userRole == 'Owner' || userRole == 'Editor';
     }
 
     // Rules for the 'projects' collection
     match /projects/{projectId} {
-      allow read: if isSignedIn() && isProjectMember(projectId);
-      
-      // A user can create a project if they are signed in and they are setting themselves as the owner in the new document.
-      allow create: if isSignedIn() && request.resource.data.roles[request.auth.uid] == 'Owner';
-      
-      allow update: if isSignedIn() && isProjectOwner(projectId);
-      allow delete: if isSignedIn() && isProjectOwner(projectId);
-
-      // Rules for subcollections
-      match /{subcollection}/{docId} {
-        // Anyone in the project can read from any subcollection
-        allow read: if isSignedIn() && isProjectMember(projectId);
-        
-        // Only Editors and Owners can write (create, update, delete) to subcollections
-        allow write: if isSignedIn() && isProjectEditor(projectId);
-      }
+      allow read: if isAuth() && isProjectMember(projectId);
+      allow create: if isAuth() && request.resource.data.roles[request.auth.uid] == 'Owner';
+      allow update: if isAuth() && isProjectOwner(projectId);
+      allow delete: if isAuth() && isProjectOwner(projectId);
     }
     
-    // Rules for user-specific data, like preferences
+    // Rules for all project sub-collections
+    match /projects/{projectId}/{subcollection}/{docId} {
+      allow read: if isAuth() && isProjectMember(projectId);
+      allow write: if isAuth() && isProjectEditor(projectId);
+    }
+
+    // Rules for the 'users' collection (for user preferences)
     match /users/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read, write: if isAuth() && request.auth.uid == userId;
     }
   }
 }
