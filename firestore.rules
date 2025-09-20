@@ -3,45 +3,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
-    function isAuth() {
-      return request.auth != null;
-    }
-
-    function isProjectMember(projectId) {
-      return isAuth() && exists(/databases/$(database)/documents/projects/$(projectId)) && request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.roles;
-    }
-    
-    function isProjectEditor(projectId) {
-        let role = get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid];
-        return isProjectMember(projectId) && (role == 'Owner' || role == 'Editor');
-    }
-
-    function isProjectOwner(projectId) {
-      return isProjectMember(projectId) && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
-    }
-
-    // Rules for the 'users' collection
-    match /users/{userId} {
-      allow read, update, delete: if isAuth() && request.auth.uid == userId;
-      allow create: if isAuth();
-    }
-    
-    // Rules for the 'projects' collection
-    match /projects/{projectId} {
-      allow read: if isProjectMember(projectId);
-      
-      // Allow creation if the user is authenticated and is assigning themselves as the Owner.
-      allow create: if isAuth() && request.resource.data.roles[request.auth.uid] == 'Owner';
-      
-      allow update, delete: if isProjectOwner(projectId);
-
-      // Rules for subcollections
-      match /{subcollection}/{docId} {
-        allow read: if isProjectMember(projectId);
-        allow create, update, delete: if isProjectEditor(projectId);
-      }
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
