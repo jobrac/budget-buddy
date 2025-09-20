@@ -1,85 +1,52 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
+    // Helper functions
     function isAuth() {
       return request.auth != null;
     }
-
-    function isProjectMember(projectId) {
-      return isAuth() && exists(/databases/$(database)/documents/projects/$(projectId)) && request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.roles;
+    
+    function isUser(userId) {
+      return isAuth() && request.auth.uid == userId;
     }
 
-    function isProjectOwner(projectId) {
-      return isProjectMember(projectId) && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
+    function getRole(rsc) {
+      return rsc.data.roles[request.auth.uid];
     }
     
-    function isProjectEditor(projectId) {
-      let userRole = get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid];
-      return isProjectMember(projectId) && (userRole == 'Owner' || userRole == 'Editor');
+    function isProjectMember(rsc) {
+      return isAuth() && getRole(rsc) in ['Owner', 'Editor', 'Viewer'];
     }
 
-    // Projects Collection
-    match /projects/{projectId} {
-      // READ: Allow if user is a member of the project
-      allow read: if isProjectMember(projectId);
-
-      // CREATE: Allow if user is authenticated and is setting themselves as the sole owner.
-      allow create: if isAuth() 
-                    && request.resource.data.roles[request.auth.uid] == 'Owner'
-                    && request.resource.data.roles.size() == 1;
-
-      // UPDATE: Allow if user is the project owner.
-      allow update: if isProjectOwner(projectId);
-
-      // DELETE: Allow if user is the project owner.
-      allow delete: if isProjectOwner(projectId);
-
-      // --- Sub-collections ---
-
-      // Generic helper for checking if a user can write to a subcollection
-      function canWriteSubcollection() {
-        // Case 1: The project already exists. Check if the user is an owner/editor.
-        let existingProject = exists(/databases/$(database)/documents/projects/$(projectId));
-        // Case 2: The project is being created in the SAME BATCH. Check the incoming data.
-        let creatingProject = existsAfter(/databases/$(database)/documents/projects/$(projectId));
-
-        return (existingProject && isProjectEditor(projectId)) || 
-               (creatingProject && getAfter(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner');
-      }
-
-      // Categories Sub-collection
-      match /categories/{categoryId} {
-        allow read: if isProjectMember(projectId);
-        // Allow write if it's an editor of an existing project OR the owner of a project being created.
-        allow write: if canWriteSubcollection();
-      }
-
-      // Accounts Sub-collection
-      match /accounts/{accountId} {
-        allow read: if isProjectMember(projectId);
-        allow write: if isProjectEditor(projectId);
-      }
-
-      // Transactions Sub-collection
-      match /transactions/{transactionId} {
-        allow read: if isProjectMember(projectId);
-        allow write: if isProjectEditor(projectId);
-      }
-
-      // Recurring Transactions Sub-collection
-      match /recurringTransactions/{recurringId} {
-        allow read: if isProjectMember(projectId);
-        allow write: if isProjectEditor(projectId);
-      }
+    function isProjectEditor(rsc) {
+      return isAuth() && getRole(rsc) in ['Owner', 'Editor'];
     }
-    
-    // Users Collection (for preferences)
+
+    function isProjectOwner(rsc) {
+      return isAuth() && getRole(rsc) == 'Owner';
+    }
+
+    // /users/{userId}
     match /users/{userId} {
-      // A user can only read and write their own document.
-      allow read, write: if isAuth() && request.auth.uid == userId;
+      allow read, update, delete: if isUser(userId);
+      allow create: if isAuth();
+    }
+
+    // /projects/{projectId}
+    match /projects/{projectId} {
+      allow read: if isProjectMember(resource);
+      allow create: if isAuth() && request.resource.data.roles[request.auth.uid] == 'Owner';
+      allow update: if isProjectOwner(resource);
+      allow delete: if isProjectOwner(resource);
+
+      // Sub-collections
+      match /{subcollection}/{docId} {
+        allow read: if isProjectMember(get(/databases/$(database)/documents/projects/$(projectId)));
+        allow write: if isProjectEditor(get(/databases/$(database)/documents/projects/$(projectId)));
+      }
     }
   }
 }
