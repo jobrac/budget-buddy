@@ -10,6 +10,7 @@ export interface Project {
     roles: {
         [uid: string]: 'Owner' | 'Editor' | 'Viewer';
     };
+    type: 'Personal' | 'Business' | 'Other';
 }
 
 export interface Account {

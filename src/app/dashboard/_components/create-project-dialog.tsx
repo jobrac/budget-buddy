@@ -68,6 +68,7 @@ export function CreateProjectDialog({ user }: { user: User }) {
         roles: {
           [user.uid]: "Owner",
         },
+        type: "Personal"
       });
 
       // 2. Create the default categories in a subcollection
@@ -91,7 +92,7 @@ export function CreateProjectDialog({ user }: { user: User }) {
       console.error("Error creating project:", error);
       toast({
         title: "Error creating project",
-        description: "Please try again later.",
+        description: (error as Error).message || "Please try again later.",
         variant: "destructive",
       });
     } finally {
