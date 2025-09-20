@@ -1,41 +1,41 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
+  
     // Helper functions
     function isAuth() {
       return request.auth != null;
     }
+    
+    function isProjectMember(projectId) {
+      return isAuth() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor', 'Viewer'];
+    }
+
+    function isProjectEditor(projectId) {
+      return isAuth() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor'];
+    }
 
     function isProjectOwner(projectId) {
-      return get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
-    }
-
-    function isProjectMember(projectId) {
-      return request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.roles;
+        return isAuth() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
     }
     
-    function isProjectEditor(projectId) {
-      let userRole = get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid];
-      return userRole == 'Owner' || userRole == 'Editor';
-    }
-
-    // Rules for the 'projects' collection
+    // Project documents
     match /projects/{projectId} {
-      allow read: if isAuth() && isProjectMember(projectId);
+      allow read: if isProjectMember(projectId);
       allow create: if isAuth() && request.resource.data.roles[request.auth.uid] == 'Owner';
-      allow update: if isAuth() && isProjectOwner(projectId);
-      allow delete: if isAuth() && isProjectOwner(projectId);
-    }
-    
-    // Rules for all project sub-collections
-    match /projects/{projectId}/{subcollection}/{docId} {
-      allow read: if isAuth() && isProjectMember(projectId);
-      allow write: if isAuth() && isProjectEditor(projectId);
+      allow update: if isProjectOwner(projectId);
+      allow delete: if isProjectOwner(projectId);
+
+      // Sub-collections
+      match /{subcollection}/{docId} {
+        allow read: if isProjectMember(projectId);
+        allow write: if isProjectEditor(projectId); // Covers create, update, delete
+      }
     }
 
-    // Rules for the 'users' collection (for user preferences)
+    // User preferences
     match /users/{userId} {
       allow read, write: if isAuth() && request.auth.uid == userId;
     }
