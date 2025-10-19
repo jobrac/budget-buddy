@@ -41,6 +41,7 @@ import { signOut } from "firebase/auth";
 import { collection, query, where } from "firebase/firestore";
 import { useCollection } from "react-firebase-hooks/firestore";
 import { cn } from "@/lib/utils";
+import { FirebaseErrorListener } from "@/components/FirebaseErrorListener";
 
 export default function DashboardLayout({
   children,
@@ -204,6 +205,7 @@ export default function DashboardLayout({
           </DropdownMenu>
         </header>
         <main className="flex flex-1 flex-col">
+          <FirebaseErrorListener />
           {children}
         </main>
       </div>

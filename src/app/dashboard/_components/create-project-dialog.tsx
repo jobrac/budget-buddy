@@ -18,6 +18,8 @@ import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase/client";
 import { addDoc, collection, serverTimestamp, writeBatch, doc } from "firebase/firestore";
 import type { User } from "firebase/auth";
+import { errorEmitter } from "@/firebase/error-emitter";
+import { FirestorePermissionError } from "@/firebase/errors";
 
 
 const defaultCategories = [
@@ -54,50 +56,55 @@ export function CreateProjectDialog({ user }: { user: User }) {
 
 
     setIsCreating(true);
-    try {
-      // Use a batch to perform multiple writes atomically
-      const batch = writeBatch(db);
+    
+    // Use a batch to perform multiple writes atomically
+    const batch = writeBatch(db);
 
-      // 1. Create the project document
-      const projectDocRef = doc(collection(db, "projects"));
-      batch.set(projectDocRef, {
-        name: projectName,
-        budget: budget,
-        currency: "USD", // Default currency
-        createdAt: serverTimestamp(),
-        roles: {
-          [user.uid]: "Owner",
-        },
-        type: "Personal"
-      });
+    // 1. Create the project document
+    const projectDocRef = doc(collection(db, "projects"));
+    const projectData = {
+      name: projectName,
+      budget: budget,
+      currency: "USD", // Default currency
+      createdAt: serverTimestamp(),
+      roles: {
+        [user.uid]: "Owner",
+      },
+    };
+    batch.set(projectDocRef, projectData);
 
-      // 2. Create the default categories in a subcollection
-      const categoriesRef = collection(db, "projects", projectDocRef.id, "categories");
-      defaultCategories.forEach(categoryName => {
-        const newCategoryRef = doc(categoriesRef);
-        batch.set(newCategoryRef, { name: categoryName, isDefault: true });
+    // 2. Create the default categories in a subcollection
+    const categoriesRef = collection(db, "projects", projectDocRef.id, "categories");
+    defaultCategories.forEach(categoryName => {
+      const newCategoryRef = doc(categoriesRef);
+      batch.set(newCategoryRef, { name: categoryName, isDefault: true });
+    });
+    
+    // Commit the batch
+    batch.commit()
+      .then(() => {
+        toast({
+          title: "Project created successfully!",
+        });
+        setProjectName("");
+        setProjectBudget("");
+        setOpen(false);
+      })
+      .catch((serverError) => {
+        // This is our new error handling logic
+        const permissionError = new FirestorePermissionError({
+            path: `/projects/{projectId} and /projects/{projectId}/categories/...`,
+            operation: 'create',
+            requestResourceData: {
+                project: projectData,
+                defaultCategories: defaultCategories,
+            },
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsCreating(false);
       });
-      
-      // Commit the batch
-      await batch.commit();
-
-
-      toast({
-        title: "Project created successfully!",
-      });
-      setProjectName("");
-      setProjectBudget("");
-      setOpen(false);
-    } catch (error) {
-      console.error("Error creating project:", error);
-      toast({
-        title: "Error creating project",
-        description: (error as Error).message || "Please try again later.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreating(false);
-    }
   };
 
 
