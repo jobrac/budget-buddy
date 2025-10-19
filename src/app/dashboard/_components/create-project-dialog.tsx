@@ -57,10 +57,6 @@ export function CreateProjectDialog({ user }: { user: User }) {
 
     setIsCreating(true);
     
-    // Use a batch to perform multiple writes atomically
-    const batch = writeBatch(db);
-
-    // 1. Create the project document
     const projectDocRef = doc(collection(db, "projects"));
     const projectData = {
       name: projectName,
@@ -71,9 +67,12 @@ export function CreateProjectDialog({ user }: { user: User }) {
         [user.uid]: "Owner",
       },
     };
+    
+    // Use a batch to perform multiple writes atomically
+    const batch = writeBatch(db);
     batch.set(projectDocRef, projectData);
 
-    // 2. Create the default categories in a subcollection
+    // Create the default categories in a subcollection
     const categoriesRef = collection(db, "projects", projectDocRef.id, "categories");
     defaultCategories.forEach(categoryName => {
       const newCategoryRef = doc(categoriesRef);
@@ -89,21 +88,20 @@ export function CreateProjectDialog({ user }: { user: User }) {
         setProjectName("");
         setProjectBudget("");
         setOpen(false);
+        setIsCreating(false);
       })
       .catch((serverError) => {
-        // This is our new error handling logic
         const permissionError = new FirestorePermissionError({
-            path: `/projects/{projectId} and /projects/{projectId}/categories/...`,
+            path: `/projects/{projectId} and subcollections`,
             operation: 'create',
             requestResourceData: {
-                project: projectData,
-                defaultCategories: defaultCategories,
+                projectData,
+                defaultCategories,
             },
         });
         errorEmitter.emit('permission-error', permissionError);
-      })
-      .finally(() => {
-        setIsCreating(false);
+        // We do not set isCreating to false here, because the error overlay will take over.
+        // If the user dismisses it, they can try again.
       });
   };
 
@@ -156,5 +154,3 @@ export function CreateProjectDialog({ user }: { user: User }) {
     </Dialog>
   );
 }
-
-    
