@@ -91,6 +91,8 @@ export function CreateProjectDialog({ user }: { user: User }) {
         setIsCreating(false);
       })
       .catch((serverError) => {
+        // This is the crucial part for detailed error reporting.
+        // It creates a new FirestorePermissionError with context and emits it.
         const permissionError = new FirestorePermissionError({
             path: `/projects/{projectId} and subcollections`,
             operation: 'create',
