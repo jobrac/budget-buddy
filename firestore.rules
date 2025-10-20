@@ -1,47 +1,66 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isUserAuthenticated() {
+    // Helper Functions
+    function isAuth() {
       return request.auth != null;
     }
 
+    function isUser(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // Checks if the user is a member of a project by reading the existing document.
     function isProjectMember(projectId) {
-      return isUserAuthenticated() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor', 'Viewer'];
+      return isAuth() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] != null;
     }
 
+    // Checks if the user is an Editor or Owner of a project by reading the existing document.
     function isProjectEditor(projectId) {
-      return isUserAuthenticated() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor'];
+      let role = get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid];
+      return isAuth() && (role == 'Editor' || role == 'Owner');
     }
-
+    
+    // Checks if the user is an Owner of a project by reading the existing document.
     function isProjectOwner(projectId) {
-      return isUserAuthenticated() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
+      return isAuth() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
     }
 
-    // Rules for the 'users' collection
+    // Checks if the user WILL BE an Editor or Owner after a write transaction.
+    function isIncomingProjectEditor(projectId) {
+      let incomingRoles = getAfter(/databases/$(database)/documents/projects/$(projectId)).data.roles;
+      return isAuth() && (incomingRoles[request.auth.uid] == 'Owner' || incomingRoles[request.auth.uid] == 'Editor');
+    }
+    
+    // User preferences can only be read/written by the user themselves.
     match /users/{userId} {
-      // Users can only read and write to their own document
-      allow read, update: if isUserAuthenticated() && request.auth.uid == userId;
-      allow create: if isUserAuthenticated();
+      allow read, write: if isUser(userId);
     }
 
-    // Rules for the 'projects' collection
+    // Rules for the 'projects' collection.
     match /projects/{projectId} {
+      // READ: Allow if user is listed in the project's roles.
       allow read: if isProjectMember(projectId);
-      allow create: if isUserAuthenticated() && request.resource.data.roles[request.auth.uid] == 'Owner';
+      
+      // CREATE: Allow if the user creating it is setting themselves as the 'Owner'.
+      allow create: if isAuth() && request.resource.data.roles[request.auth.uid] == 'Owner';
+      
+      // UPDATE, DELETE: Only the project 'Owner' can modify or delete the project.
       allow update, delete: if isProjectOwner(projectId);
 
-      // Rules for all subcollections within a project
+      // Rules for ALL subcollections within a project.
       match /{subcollection}/{docId} {
-        // Reads are allowed for any project member
-        allow read, list: if isProjectMember(projectId);
+        // READ: Allow if user is a member of the parent project.
+        allow read: if isProjectMember(projectId);
         
-        // Writes (create, update, delete) are restricted to Editors and Owners.
-        // This rule works for both creating a new project with its categories in a batch,
-        // and for modifying subcollections of existing projects.
-        allow write: if isProjectEditor(projectId);
+        // WRITE (CREATE, UPDATE, DELETE):
+        // Allow if the user is an Editor/Owner of an existing project,
+        // OR if they are creating a new project and will be an Editor/Owner.
+        // This correctly handles the initial batched write.
+        allow write: if isProjectEditor(projectId) || isIncomingProjectEditor(projectId);
       }
     }
   }
