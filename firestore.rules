@@ -3,64 +3,54 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
+    
     // Helper Functions
-    function isAuth() {
+    function isSignedIn() {
       return request.auth != null;
     }
-
+    
     function isUser(userId) {
-      return isAuth() && request.auth.uid == userId;
-    }
-
-    // Checks if the user is a member of a project by reading the existing document.
-    function isProjectMember(projectId) {
-      return isAuth() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] != null;
-    }
-
-    // Checks if the user is an Editor or Owner of a project by reading the existing document.
-    function isProjectEditor(projectId) {
-      let role = get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid];
-      return isAuth() && (role == 'Editor' || role == 'Owner');
+      return isSignedIn() && request.auth.uid == userId;
     }
     
-    // Checks if the user is an Owner of a project by reading the existing document.
-    function isProjectOwner(projectId) {
-      return isAuth() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
-    }
-
-    // Checks if the user WILL BE an Editor or Owner after a write transaction.
-    function isIncomingProjectEditor(projectId) {
-      let incomingRoles = getAfter(/databases/$(database)/documents/projects/$(projectId)).data.roles;
-      return isAuth() && (incomingRoles[request.auth.uid] == 'Owner' || incomingRoles[request.auth.uid] == 'Editor');
+    function getProjectRoles() {
+      return get(/databases/$(database)/documents/projects/$(projectId)).data.roles;
     }
     
-    // User preferences can only be read/written by the user themselves.
+    function isProjectMember() {
+      return isSignedIn() && request.auth.uid in getProjectRoles();
+    }
+
+    function isProjectOwner() {
+      return isProjectMember() && getProjectRoles()[request.auth.uid] == 'Owner';
+    }
+
+    function isProjectEditor() {
+      return isProjectMember() && getProjectRoles()[request.auth.uid] in ['Owner', 'Editor'];
+    }
+
+    // Rules for user-specific data (e.g., preferences)
     match /users/{userId} {
       allow read, write: if isUser(userId);
     }
-
-    // Rules for the 'projects' collection.
+    
+    // Rules for the 'projects' collection
     match /projects/{projectId} {
-      // READ: Allow if user is listed in the project's roles.
-      allow read: if isProjectMember(projectId);
+      allow read: if isProjectMember();
       
-      // CREATE: Allow if the user creating it is setting themselves as the 'Owner'.
-      allow create: if isAuth() && request.resource.data.roles[request.auth.uid] == 'Owner';
+      // A user can create a project if they are authenticated and are setting themselves as the owner.
+      allow create: if isSignedIn() && request.resource.data.roles[request.auth.uid] == 'Owner';
       
-      // UPDATE, DELETE: Only the project 'Owner' can modify or delete the project.
-      allow update, delete: if isProjectOwner(projectId);
-
-      // Rules for ALL subcollections within a project.
-      match /{subcollection}/{docId} {
-        // READ: Allow if user is a member of the parent project.
-        allow read: if isProjectMember(projectId);
+      allow update, delete: if isProjectOwner();
+      
+      // Rules for all subcollections within a project
+      match /{allSubcollections}/{docId} {
+        allow read: if isProjectMember();
         
-        // WRITE (CREATE, UPDATE, DELETE):
-        // Allow if the user is an Editor/Owner of an existing project,
-        // OR if they are creating a new project and will be an Editor/Owner.
-        // This correctly handles the initial batched write.
-        allow write: if isProjectEditor(projectId) || isIncomingProjectEditor(projectId);
+        // This is the key fix:
+        // Allow write if the user IS an editor of an existing project
+        // OR if the user is creating the project in the same transaction and making themselves owner.
+        allow write: if isProjectEditor() || (request.resource.data.size() > 0 && request.auth.uid in getAfter(/databases/$(database)/documents/projects/$(projectId)).data.roles && getAfter(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner');
       }
     }
   }
