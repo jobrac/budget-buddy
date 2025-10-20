@@ -2,62 +2,46 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // =================================
-    // Helper Functions
-    // =================================
-    
-    function isProjectMember(project) {
-      return request.auth.uid in project.data.roles;
-    }
-    
-    function isProjectEditor(project) {
-      return project.data.roles[request.auth.uid] in ['Owner', 'Editor'];
-    }
-    
-    function isProjectOwner(project) {
-      return project.data.roles[request.auth.uid] == 'Owner';
+
+    // Helper functions
+    function isUserAuthenticated() {
+      return request.auth != null;
     }
 
-    // =================================
-    // User Preferences
-    // =================================
+    function isProjectMember(projectId) {
+      return isUserAuthenticated() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor', 'Viewer'];
+    }
+
+    function isProjectEditor(projectId) {
+      return isUserAuthenticated() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] in ['Owner', 'Editor'];
+    }
+
+    function isProjectOwner(projectId) {
+      return isUserAuthenticated() && get(/databases/$(database)/documents/projects/$(projectId)).data.roles[request.auth.uid] == 'Owner';
+    }
+
+    // Rules for the 'users' collection
     match /users/{userId} {
-      allow read, write: if request.auth.uid == userId;
+      // Users can only read and write to their own document
+      allow read, update: if isUserAuthenticated() && request.auth.uid == userId;
+      allow create: if isUserAuthenticated();
     }
 
-    // =================================
-    // Projects Collection
-    // =================================
+    // Rules for the 'projects' collection
     match /projects/{projectId} {
-      // READ: Any authenticated project member can read.
-      allow read: if request.auth.uid != null && isProjectMember(resource);
+      allow read: if isProjectMember(projectId);
+      allow create: if isUserAuthenticated() && request.resource.data.roles[request.auth.uid] == 'Owner';
+      allow update, delete: if isProjectOwner(projectId);
 
-      // CREATE: The person creating the project must be the owner.
-      allow create: if request.auth.uid != null && isProjectOwner(request.resource);
-
-      // UPDATE/DELETE: Only the owner can update settings or delete the project.
-      allow update, delete: if request.auth.uid != null && isProjectOwner(resource);
-      
-      
-      // =================================
-      // Generic Subcollection Rules
-      // =================================
-      
-      // This single block covers: /accounts, /categories, /transactions, /recurringTransactions
+      // Rules for all subcollections within a project
       match /{subcollection}/{docId} {
+        // Reads are allowed for any project member
+        allow read, list: if isProjectMember(projectId);
         
-        // READ: Allow if the user is a member of the parent project.
-        allow read: if request.auth.uid != null && isProjectMember(get(/databases/$(database)/documents/projects/$(projectId)));
-        
-        // WRITE: Allow if the user is an owner/editor.
-        // This handles two cases:
-        // 1. Writing to an EXISTING project (using get()).
-        // 2. Writing as part of a BATCH with a NEW project (using getAfter()).
-        allow write: if request.auth.uid != null && (
-          isProjectEditor(get(/databases/$(database)/documents/projects/$(projectId))) ||
-          isProjectEditor(getAfter(/databases/$(database)/documents/projects/$(projectId)))
-        );
+        // Writes (create, update, delete) are restricted to Editors and Owners.
+        // This rule works for both creating a new project with its categories in a batch,
+        // and for modifying subcollections of existing projects.
+        allow write: if isProjectEditor(projectId);
       }
     }
   }
